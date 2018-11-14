@@ -1,5 +1,4 @@
 #include "syncwrapper.h"
-#include "folderman.h"
 #include "socketapi.h"
 #include "vfs_mac.h"
 
@@ -26,10 +25,6 @@ void SyncWrapper::updateSyncQueue(const QString path, bool syncing) {
 
 bool SyncWrapper::syncDone(const QString path) {
     return _syncDone.value(removeSlash(path));
-}
-
-void SyncWrapper::updateLocalFileTree(const QString &path, csync_instructions_e instruction){
-    OCC::FolderMan::instance()->currentSyncFolder()->updateLocalFileTree(path, instruction);
 }
 
 void SyncWrapper::openFileAtPath(const QString path){
@@ -60,13 +55,28 @@ void SyncWrapper::writeFileAtPath(const QString path){
 }
 
 void SyncWrapper::initSync(const QString path, csync_instructions_e instruction){
-    initSyncMode(path);
-    updateLocalFileTree(path, instruction);
-    _syncDone.insert(path, false);
+    int result = 1;
+    if(_syncJournalDb->getSyncMode(path) == SyncJournalDb::SyncMode::SYNCMODE_ONLINE){
+        result = _syncJournalDb->setSyncMode(path, SyncJournalDb::SyncMode::SYNCMODE_OFFLINE);
+    } else if(_syncJournalDb->getSyncMode(path) == SyncJournalDb::SyncMode::SYNCMODE_NONE) {
+       result = _syncJournalDb->setSyncMode(path, SyncJournalDb::SyncMode::SYNCMODE_ONLINE);
+    }
+
+    if(result == 0)
+        qCWarning(lcSyncWrapper) << "Couldn't change file SYNCMODE.";
+
+   result = _syncJournalDb->setSyncModeDownload(path, SyncJournalDb::SyncModeDownload::SYNCMODE_DOWNLOADED_NO);
+   if(result == 0)
+        qCWarning(lcSyncWrapper) << "Couldn't set file to SYNCMODE_DOWNLOADED_NO.";
+
+   if(result == 1){
+       _folder->updateLocalFileTree(path, instruction);
+       _syncDone.insert(path, false);
+   }
 }
 
 void SyncWrapper::startSync(){
-    OCC::FolderMan::instance()->currentSyncFolder()->startSync();
+    emit startSyncForFolder();
 }
 
 QDateTime SyncWrapper::lastAccess(const QString path){
@@ -74,27 +84,11 @@ QDateTime SyncWrapper::lastAccess(const QString path){
 }
 
 int SyncWrapper::updateLastAccess(const QString path){
-    return SyncJournalDb::instance()->updateLastAccess(removeSlash(path));
+    return _syncJournalDb->updateLastAccess(removeSlash(path));
 }
 
 int SyncWrapper::syncMode(const QString path){
     return SyncJournalDb::instance()->getSyncMode(removeSlash(path));
-}
-
-void SyncWrapper::initSyncMode(const QString path){
-    int result = 1;
-    if(SyncJournalDb::instance()->getSyncMode(path) == SyncJournalDb::SyncMode::SYNCMODE_ONLINE){
-        result = SyncJournalDb::instance()->setSyncMode(path, SyncJournalDb::SyncMode::SYNCMODE_OFFLINE);
-    } else if(SyncJournalDb::instance()->getSyncMode(path) == SyncJournalDb::SyncMode::SYNCMODE_NONE) {
-       result = SyncJournalDb::instance()->setSyncMode(path, SyncJournalDb::SyncMode::SYNCMODE_ONLINE);
-    }
-
-    if(result == 0)
-        qCWarning(lcSyncWrapper) << "Couldn't change file SYNCMODE.";
-
-   result = SyncJournalDb::instance()->setSyncModeDownload(path, SyncJournalDb::SyncModeDownload::SYNCMODE_DOWNLOADED_NO);
-   if(result == 0)
-        qCWarning(lcSyncWrapper) << "Couldn't set file to SYNCMODE_DOWNLOADED_NO.";
 }
 
 int SyncWrapper::syncModeDownload(const QString path){

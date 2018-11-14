@@ -3,9 +3,10 @@
 
 #include <QObject>
 #include <QMap>
-#include "common/syncjournaldb.h"
 
-#include <csync.h>
+#include "common/syncjournaldb.h"
+#include "folderman.h"
+#include "csync.h"
 
 namespace OCC {
 
@@ -16,14 +17,7 @@ public:
     static SyncWrapper *instance();
     ~SyncWrapper() {}
 
-    void openFileAtPath(const QString path);
-    void releaseFileAtPath(const QString path);
-    void writeFileAtPath(const QString path);
     bool syncDone(const QString path);
-
-    void updateLocalFileTree(const QString &path, csync_instructions_e instruction = CSYNC_INSTRUCTION_NONE);
-    void initSyncMode(const QString path);
-    void initSync(const QString path, csync_instructions_e instruction = CSYNC_INSTRUCTION_SYNC);
     void startSync();
 
 private:
@@ -40,15 +34,29 @@ private:
 
     QMap<QString, bool> _syncDone;
 
+    SyncJournalDb *_syncJournalDb;
+    FolderMan *_folderMan;
+    Folder *_folder;
+
 public slots:
     void updateSyncQueue(const QString path, bool syncing);
+    void initSync(const QString path, csync_instructions_e instruction = CSYNC_INSTRUCTION_SYNC);
+    void openFileAtPath(const QString path);
+    void releaseFileAtPath(const QString path);
+    void writeFileAtPath(const QString path);
 
 signals:
-    void syncDone(QString, bool);
+    void syncFinish(const QString &, bool);
+    void startSyncForFolder();
 
 private:
     SyncWrapper() {
-        connect(SyncJournalDb::instance(), &SyncJournalDb::syncStatusChanged, this, &SyncWrapper::updateSyncQueue);
+        _syncJournalDb = SyncJournalDb::instance();
+        _folderMan = FolderMan::instance();
+        _folder = FolderMan::instance()->currentSyncFolder();
+        connect(_syncJournalDb, &SyncJournalDb::syncStatusChanged, this, &SyncWrapper::updateSyncQueue, Qt::DirectConnection);
+        connect(_syncJournalDb, &SyncJournalDb::syncStatusChanged, this, &SyncWrapper::syncFinish, Qt::DirectConnection);
+        connect(this, &SyncWrapper::startSyncForFolder, _folderMan, &FolderMan::slotStartScheduledFolderSync, Qt::DirectConnection);
     }
 };
 }

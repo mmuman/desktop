@@ -8,6 +8,8 @@
 #include <fuse.h>
 #include <fuse/fuse_lowlevel.h>
 
+#include "syncwrapper.h"
+
 const QString  kGMUserFileSystemContextUserIDKey = "kGMUserFileSystemContextUserIDKey";
 const QString  kGMUserFileSystemContextGroupIDKey = "kGMUserFileSystemContextGroupIDKey";
 const QString  kGMUserFileSystemContextProcessIDKey = "kGMUserFileSystemContextProcessIDKey";
@@ -76,6 +78,9 @@ private:
     
     QPointer<OCC::AccountState> accountState_;
     int _counter = 0;
+
+    OCC::SyncWrapper *_syncWrapper;
+    bool _syncing;
 
 #pragma mark Fuse operations.
     void mount(QVariantMap args);
@@ -542,12 +547,16 @@ public:
     
 public slots:
     void folderFileListFinish(OCC::DiscoveryDirectoryResult *dr);
+    void syncFinish(const QString &path, bool status);
     
 signals:
     void FuseFileSystemDidMount(QVariantMap userInfo);
     void FuseFileSystemMountFailed(QVariantMap error);
     void FuseFileSystemDidUnmount(QVariantMap userInfo);
     void startRemoteFileListJob(QString path);
+
+    void startSync();
+    void initSync(const QString path, csync_instructions_e instruction = CSYNC_INSTRUCTION_SYNC);
 
 };
 

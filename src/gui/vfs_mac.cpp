@@ -33,8 +33,6 @@
 
 #include <sys/ioctl.h>
 
-#include "syncwrapper.h"
-
 class InternalVfsMac : public QObject
 {
 private:
@@ -95,6 +93,7 @@ VfsMac::VfsMac(QString rootPath, bool isThreadSafe, OCC::AccountState *accountSt
     :QObject(parent)
     , internal_(new InternalVfsMac(parent, isThreadSafe))
     , accountState_(accountState)
+    , _syncing(true)
 {
     rootPath_ = rootPath;
     totalQuota_ = (2LL * 1024 * 1024 * 1024);
@@ -103,6 +102,11 @@ VfsMac::VfsMac(QString rootPath, bool isThreadSafe, OCC::AccountState *accountSt
     _remotefileListJob->setParent(this);
     connect(this, &VfsMac::startRemoteFileListJob, _remotefileListJob, &OCC::DiscoveryFolderFileList::doGetFolderContent);
     connect(_remotefileListJob, &OCC::DiscoveryFolderFileList::gotDataSignal, this, &VfsMac::folderFileListFinish);
+
+    _syncWrapper = OCC::SyncWrapper::instance();
+    connect(this, &VfsMac::startSync, _syncWrapper, &OCC::SyncWrapper::startSync, Qt::DirectConnection);
+    connect(this, &VfsMac::initSync, _syncWrapper, &OCC::SyncWrapper::initSync, Qt::DirectConnection);
+    connect(_syncWrapper, &OCC::SyncWrapper::syncFinish, this, &VfsMac::syncFinish, Qt::DirectConnection);
 }
 
 bool VfsMac::enableAllocate() {
@@ -616,17 +620,23 @@ QStringList *VfsMac::contentsOfDirectoryAtPath(QString path, QVariantMap &error)
                     close(fd.toInt());
                 }
             }
-            OCC::SyncWrapper::instance()->initSync(_fileListMap.value(path)->list.at(i)->path);
+           emit initSync(_fileListMap.value(path)->list.at(i)->path);
         }
     }
-    _fileListMap.remove(path);
-    OCC::SyncWrapper::instance()->startSync();
+    //_fileListMap.remove(path);
+    emit startSync();
+
     return new QStringList (fm.contentsOfDirectoryAtPath(rootPath_ + path, error));
 }
 
 #pragma mark File Contents
 
-char *VfsMac::getProcessName(pid_t pid)
+void VfsMac::syncFinish(const QString &path, bool status){
+    Q_UNUSED(path);
+    _syncing = status;
+}
+
+char * VfsMac::getProcessName(pid_t pid)
 {
     char pathBuffer [PROC_PIDPATHINFO_MAXSIZE];
     proc_pidpath(pid, pathBuffer, sizeof(pathBuffer));
